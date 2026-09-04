@@ -95,6 +95,20 @@
   .badge.run { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
   .badge.queued { background: color-mix(in srgb, var(--muted) 20%, transparent); color: var(--muted); }
   .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
+  .seat-title { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; margin-bottom: 14px; }
+  .seat-times { display: flex; align-items: center; justify-content: space-around; background: var(--bg); border-radius: 10px; padding: 14px 8px; margin-bottom: 14px; }
+  .seat-times .t { text-align: center; }
+  .seat-times .t .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .seat-times .t .val { font-size: 22px; font-weight: 700; }
+  .seat-times .arrow { color: var(--muted); }
+  .seat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+  .seat-grid .g .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .seat-grid .g .val { font-size: 14px; font-weight: 700; }
+  .seat-sub { border-top: 1px solid var(--border); padding-top: 12px; }
+  .seat-sub .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .seat-sub .val { font-size: 16px; font-weight: 700; }
+  .pill { font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 700; background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+  .updated { font-size: 11px; color: var(--muted); text-align: right; margin-top: -6px; margin-bottom: 12px; }
   .toast {
     position: fixed; left: 16px; right: 16px; bottom: 20px;
     background: var(--text); color: var(--bg);
@@ -119,6 +133,12 @@
 
 <div id="app" hidden>
   <h1>📚 도서관 좌석 컨트롤</h1>
+
+  <h2>현재 배정 좌석</h2>
+  <div class="updated" id="statusUpdated"></div>
+  <div id="statusCard">
+    <div class="card"><div class="hint">불러오는 중...</div></div>
+  </div>
 
   <div class="card">
     <label for="room">구역 선택</label>
@@ -232,6 +252,7 @@ async function dispatch(workflowFile, inputs, label, btn) {
     });
     toast(`${label} 실행 요청 완료`);
     setTimeout(loadRuns, 2000);
+    setTimeout(loadStatus, 2000);
   } catch (e) {
     toast(`실패: ${e.message}`);
     if (btn) { btn.disabled = false; }
@@ -294,6 +315,69 @@ function syncButtons(runs) {
   extendBtn.textContent = extendActive.length > 0 ? '⏳ 연장 확인 중...' : '🔄 지금 연장 실행';
 }
 
+function formatTime(s) {
+  if (!s) return '?';
+  const d = new Date(s.replace(' ', 'T'));
+  if (isNaN(d)) return s;
+  return d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function timeAgo(iso) {
+  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (diffMin < 1) return '방금 갱신';
+  if (diffMin < 60) return `${diffMin}분 전 갱신`;
+  return `${Math.round(diffMin / 60)}시간 전 갱신`;
+}
+
+function renderSeatCard(c) {
+  return `<div class="card">
+    <div class="seat-title">📍 ${c.room ?? '?'} ${c.seatCode ?? '?'}번 <span class="pill">${c.state ?? '배정중'}</span></div>
+    <div class="seat-times">
+      <div class="t"><div class="lbl">시작</div><div class="val">${formatTime(c.beginTime)}</div></div>
+      <div class="arrow">→</div>
+      <div class="t"><div class="lbl">종료</div><div class="val">${formatTime(c.endTime)}</div></div>
+    </div>
+    <div class="seat-grid">
+      <div class="g"><div class="lbl">상태</div><div class="val">${c.state ?? '-'}</div></div>
+      <div class="g"><div class="lbl">예약수단</div><div class="val">${c.smufMethod ?? '-'}</div></div>
+      <div class="g"><div class="lbl">연장</div><div class="val">${c.renewableCnt ?? '-'} / ${c.renewalLimit ?? '-'}</div></div>
+    </div>
+    <div class="seat-sub">
+      <div class="lbl">연장가능시간</div>
+      <div class="val">${formatTime(c.renewableDate)}</div>
+    </div>
+  </div>`;
+}
+
+async function loadStatus() {
+  const el = document.getElementById('statusCard');
+  const updEl = document.getElementById('statusUpdated');
+  try {
+    const res = await fetch(`${API}/contents/status.json?ref=status`, {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        Accept: 'application/vnd.github.raw+json',
+      },
+      cache: 'no-store',
+    });
+    if (res.status === 404) {
+      el.innerHTML = '<div class="card"><div class="hint">아직 상태 기록이 없습니다. 연장/예약이 한 번 실행되면 여기 표시됩니다.</div></div>';
+      updEl.textContent = '';
+      return;
+    }
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const data = await res.json();
+    updEl.textContent = timeAgo(data.updatedAt);
+    if (!data.charges || data.charges.length === 0) {
+      el.innerHTML = '<div class="card"><div class="hint">현재 배정된 좌석이 없습니다.</div></div>';
+      return;
+    }
+    el.innerHTML = data.charges.map(renderSeatCard).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="card"><div class="hint">불러오기 실패: ${e.message}</div></div>`;
+  }
+}
+
 async function loadRuns() {
   const el = document.getElementById('runs');
   try {
@@ -321,7 +405,9 @@ function boot() {
   document.getElementById('gate').hidden = true;
   document.getElementById('app').hidden = false;
   loadRuns();
+  loadStatus();
   setInterval(loadRuns, 15000);
+  setInterval(loadStatus, 15000);
 }
 
 boot();
