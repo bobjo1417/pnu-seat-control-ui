@@ -123,7 +123,31 @@
   <div class="card">
     <label for="room">구역 선택</label>
     <select id="room">
-      <option value="8">새벽별당[24h]-B (8)</option>
+      <optgroup label="새벽누리">
+        <option value="3">새벽누리-열람존</option>
+        <option value="2">새벽누리-미디어존</option>
+        <option value="67">새벽누리-PC</option>
+      </optgroup>
+      <optgroup label="2층">
+        <option value="7">새벽별당[24h]-A</option>
+        <option value="8" selected>새벽별당[24h]-B</option>
+        <option value="69">1열람실</option>
+      </optgroup>
+      <optgroup label="3층">
+        <option value="9">2열람실-A</option>
+        <option value="10">2열람실-B</option>
+        <option value="11">2열람실-C</option>
+        <option value="12">2열람실-D</option>
+      </optgroup>
+      <optgroup label="4층">
+        <option value="15">3열람실-A</option>
+        <option value="16">3열람실-B</option>
+        <option value="17">3열람실-C</option>
+        <option value="18">3열람실-D</option>
+        <option value="13">노트북열람실-A</option>
+        <option value="14">노트북열람실-B</option>
+        <option value="19">대학원캐럴실</option>
+      </optgroup>
       <option value="custom">직접 입력...</option>
     </select>
     <input id="roomCustom" type="number" placeholder="room_id 직접 입력" hidden style="margin-top:10px" />
