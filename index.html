@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>도서관 좌석 컨트롤</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #1a1c20;
+    --muted: #6b7078;
+    --border: #e2e4e8;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --warn: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --card: #181b21;
+      --text: #eceef1;
+      --muted: #9aa0a8;
+      --border: #2a2e35;
+      --accent: #3b82f6;
+      --accent-text: #ffffff;
+      --danger: #f87171;
+      --success: #4ade80;
+      --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+    padding: 20px 16px 60px;
+    max-width: 480px;
+    margin-inline: auto;
+  }
+  h1 { font-size: 20px; margin: 4px 0 20px; }
+  h2 { font-size: 14px; color: var(--muted); margin: 28px 0 10px; font-weight: 600; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  select, input, button {
+    width: 100%;
+    font-size: 16px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  input:last-child, select:last-child { margin-bottom: 0; }
+  button {
+    cursor: pointer;
+    border: none;
+    font-weight: 600;
+    margin-bottom: 0;
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); }
+  button.secondary { background: var(--border); color: var(--text); }
+  button.danger { background: var(--danger); color: #fff; }
+  button:active { opacity: .8; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; margin-bottom: 0; }
+  .runs { display: flex; flex-direction: column; gap: 8px; }
+  .run {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+    font-size: 13px;
+  }
+  .run a { color: var(--text); text-decoration: none; flex: 1; }
+  .badge {
+    font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 700;
+    white-space: nowrap; margin-left: 8px;
+  }
+  .badge.ok { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+  .badge.fail { background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger); }
+  .badge.run { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+  .badge.queued { background: color-mix(in srgb, var(--muted) 20%, transparent); color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 8px; }
+  .toast {
+    position: fixed; left: 16px; right: 16px; bottom: 20px;
+    background: var(--text); color: var(--bg);
+    padding: 12px 16px; border-radius: 10px; font-size: 13px;
+    text-align: center; opacity: 0; pointer-events: none; transition: opacity .2s;
+    max-width: 480px; margin-inline: auto;
+  }
+  .toast.show { opacity: 1; }
+  #gate { text-align: center; padding-top: 60px; }
+  #gate p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <h1>🔑 접속 토큰 입력</h1>
+  <p>이 페이지에서 GitHub Actions를 실행하려면<br/>이 저장소 전용 개인 토큰(PAT)이 필요합니다.<br/>이 기기(브라우저)에만 저장되고 다른 곳으로 전송되지 않습니다.</p>
+  <input id="tokenInput" type="password" placeholder="github_pat_..." autocomplete="off" />
+  <button class="primary" onclick="saveToken()">저장하고 시작</button>
+</div>
+
+<div id="app" hidden>
+  <h1>📚 도서관 좌석 컨트롤</h1>
+
+  <div class="card">
+    <label for="room">구역 선택</label>
+    <select id="room">
+      <option value="8">새벽별당[24h]-B (8)</option>
+      <option value="custom">직접 입력...</option>
+    </select>
+    <input id="roomCustom" type="number" placeholder="room_id 직접 입력" hidden style="margin-top:10px" />
+    <label for="minutes" style="margin-top:12px">감시 시간 (분, 최대 350)</label>
+    <input id="minutes" type="number" value="60" min="1" max="350" />
+    <button class="primary" onclick="runReserve()">🎯 지금 예약 감시 시작</button>
+  </div>
+
+  <div class="card">
+    <button class="secondary" onclick="runExtend()">🔄 지금 연장 실행</button>
+    <p class="hint">평소엔 10분마다 자동으로 돌지만, 지금 바로 확인하고 싶을 때 누르세요.</p>
+  </div>
+
+  <h2>최근 실행 기록</h2>
+  <div class="card">
+    <div class="runs" id="runs">
+      <div class="hint">불러오는 중...</div>
+    </div>
+  </div>
+
+  <button class="secondary" onclick="resetToken()" style="margin-top:20px">토큰 지우기 / 로그아웃</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const OWNER = 'bobjo1417';
+const REPO = 'pnu-library-seat-auto';
+const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
+
+function getToken() {
+  try { return localStorage.getItem('pnu_pat') || ''; } catch { return ''; }
+}
+function saveToken() {
+  const v = document.getElementById('tokenInput').value.trim();
+  if (!v) return;
+  try { localStorage.setItem('pnu_pat', v); } catch {}
+  boot();
+}
+function resetToken() {
+  try { localStorage.removeItem('pnu_pat'); } catch {}
+  location.reload();
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+async function gh(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`GitHub API 오류 ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+document.getElementById('room').addEventListener('change', (e) => {
+  document.getElementById('roomCustom').hidden = e.target.value !== 'custom';
+});
+
+async function dispatch(workflowFile, inputs, label) {
+  try {
+    await gh(`/actions/workflows/${workflowFile}/dispatches`, {
+      method: 'POST',
+      body: JSON.stringify({ ref: 'master', inputs }),
+    });
+    toast(`${label} 실행 요청 완료`);
+    setTimeout(loadRuns, 2000);
+  } catch (e) {
+    toast(`실패: ${e.message}`);
+  }
+}
+
+function runReserve() {
+  const sel = document.getElementById('room').value;
+  const roomId = sel === 'custom' ? document.getElementById('roomCustom').value.trim() : sel;
+  const minutes = document.getElementById('minutes').value.trim() || '60';
+  if (!roomId) { toast('구역을 선택하거나 room_id를 입력하세요'); return; }
+  dispatch('auto-reserve.yml', { room_id: roomId, retry_minutes: minutes }, '자동예약');
+}
+
+function runExtend() {
+  dispatch('auto-extend.yml', {}, '자동연장');
+}
+
+function badgeFor(run) {
+  if (run.status !== 'completed') {
+    return run.status === 'queued'
+      ? '<span class="badge queued">대기중</span>'
+      : '<span class="badge run">실행중</span>';
+  }
+  return run.conclusion === 'success'
+    ? '<span class="badge ok">성공</span>'
+    : '<span class="badge fail">' + (run.conclusion || '실패') + '</span>';
+}
+
+async function loadRuns() {
+  const el = document.getElementById('runs');
+  try {
+    const data = await gh('/actions/runs?per_page=8');
+    if (!data.workflow_runs.length) {
+      el.innerHTML = '<div class="hint">아직 실행 기록이 없습니다.</div>';
+      return;
+    }
+    el.innerHTML = data.workflow_runs.map((r) => {
+      const time = new Date(r.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return `<div class="run">
+        <a href="${r.html_url}" target="_blank">${r.name}<br/><span class="hint">${time}</span></a>
+        ${badgeFor(r)}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="hint">불러오기 실패: ${e.message}</div>`;
+  }
+}
+
+function boot() {
+  const token = getToken();
+  if (!token) return;
+  document.getElementById('gate').hidden = true;
+  document.getElementById('app').hidden = false;
+  loadRuns();
+  setInterval(loadRuns, 15000);
+}
+
+boot();
+</script>
+</body>
+</html>
