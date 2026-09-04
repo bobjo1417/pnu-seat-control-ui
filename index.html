@@ -129,11 +129,12 @@
     <input id="roomCustom" type="number" placeholder="room_id 직접 입력" hidden style="margin-top:10px" />
     <label for="minutes" style="margin-top:12px">감시 시간 (분, 최대 350)</label>
     <input id="minutes" type="number" value="60" min="1" max="350" />
-    <button class="primary" onclick="runReserve()">🎯 지금 예약 감시 시작</button>
+    <button class="primary" id="reserveBtn" onclick="runReserve()">🎯 지금 예약 감시 시작</button>
+    <button class="danger" id="reserveCancelBtn" onclick="cancelReserve()" hidden style="margin-top:10px">⏹ 감시 중지</button>
   </div>
 
   <div class="card">
-    <button class="secondary" onclick="runExtend()">🔄 지금 연장 실행</button>
+    <button class="secondary" id="extendBtn" onclick="runExtend()">🔄 지금 연장 실행</button>
     <p class="hint">평소엔 10분마다 자동으로 돌지만, 지금 바로 확인하고 싶을 때 누르세요.</p>
   </div>
 
@@ -198,7 +199,8 @@ document.getElementById('room').addEventListener('change', (e) => {
   document.getElementById('roomCustom').hidden = e.target.value !== 'custom';
 });
 
-async function dispatch(workflowFile, inputs, label) {
+async function dispatch(workflowFile, inputs, label, btn) {
+  if (btn) { btn.disabled = true; }
   try {
     await gh(`/actions/workflows/${workflowFile}/dispatches`, {
       method: 'POST',
@@ -208,6 +210,7 @@ async function dispatch(workflowFile, inputs, label) {
     setTimeout(loadRuns, 2000);
   } catch (e) {
     toast(`실패: ${e.message}`);
+    if (btn) { btn.disabled = false; }
   }
 }
 
@@ -216,11 +219,26 @@ function runReserve() {
   const roomId = sel === 'custom' ? document.getElementById('roomCustom').value.trim() : sel;
   const minutes = document.getElementById('minutes').value.trim() || '60';
   if (!roomId) { toast('구역을 선택하거나 room_id를 입력하세요'); return; }
-  dispatch('auto-reserve.yml', { room_id: roomId, retry_minutes: minutes }, '자동예약');
+  dispatch('auto-reserve.yml', { room_id: roomId, retry_minutes: minutes }, '자동예약', document.getElementById('reserveBtn'));
 }
 
 function runExtend() {
-  dispatch('auto-extend.yml', {}, '자동연장');
+  dispatch('auto-extend.yml', {}, '자동연장', document.getElementById('extendBtn'));
+}
+
+let activeReserveRunIds = [];
+
+async function cancelReserve() {
+  const btn = document.getElementById('reserveCancelBtn');
+  btn.disabled = true;
+  try {
+    await Promise.all(activeReserveRunIds.map((id) => gh(`/actions/runs/${id}/cancel`, { method: 'POST' })));
+    toast('감시 중지 요청 완료');
+    setTimeout(loadRuns, 2000);
+  } catch (e) {
+    toast(`중지 실패: ${e.message}`);
+    btn.disabled = false;
+  }
 }
 
 function badgeFor(run) {
@@ -234,10 +252,29 @@ function badgeFor(run) {
     : '<span class="badge fail">' + (run.conclusion || '실패') + '</span>';
 }
 
+function syncButtons(runs) {
+  const active = (name) => runs.filter((r) => r.name === name && r.status !== 'completed');
+
+  const reserveActive = active('Auto Reserve Seat');
+  const reserveBtn = document.getElementById('reserveBtn');
+  const cancelBtn = document.getElementById('reserveCancelBtn');
+  activeReserveRunIds = reserveActive.map((r) => r.id);
+  reserveBtn.disabled = reserveActive.length > 0;
+  reserveBtn.textContent = reserveActive.length > 0 ? '⏳ 감시 실행 중...' : '🎯 지금 예약 감시 시작';
+  cancelBtn.hidden = reserveActive.length === 0;
+  cancelBtn.disabled = false;
+
+  const extendActive = active('Auto Extend Seat');
+  const extendBtn = document.getElementById('extendBtn');
+  extendBtn.disabled = extendActive.length > 0;
+  extendBtn.textContent = extendActive.length > 0 ? '⏳ 연장 확인 중...' : '🔄 지금 연장 실행';
+}
+
 async function loadRuns() {
   const el = document.getElementById('runs');
   try {
     const data = await gh('/actions/runs?per_page=8');
+    syncButtons(data.workflow_runs);
     if (!data.workflow_runs.length) {
       el.innerHTML = '<div class="hint">아직 실행 기록이 없습니다.</div>';
       return;
