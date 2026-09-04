@@ -182,6 +182,11 @@
     <p class="hint">평소엔 10분마다 자동으로 돌지만, 지금 바로 확인하고 싶을 때 누르세요.</p>
   </div>
 
+  <div class="card">
+    <button class="danger" id="cancelBtn" onclick="runCancel()">🗑 현재 좌석 취소</button>
+    <p class="hint">현재 배정된 좌석을 즉시 취소합니다.</p>
+  </div>
+
   <h2>최근 실행 기록</h2>
   <div class="card">
     <div class="runs" id="runs">
@@ -271,6 +276,11 @@ function runExtend() {
   dispatch('auto-extend.yml', {}, '자동연장', document.getElementById('extendBtn'));
 }
 
+function runCancel() {
+  if (!confirm('현재 배정된 좌석을 정말 취소할까요?')) return;
+  dispatch('auto-cancel.yml', {}, '좌석 취소', document.getElementById('cancelBtn'));
+}
+
 let activeReserveRunIds = [];
 
 async function cancelReserve() {
@@ -302,17 +312,22 @@ function syncButtons(runs) {
 
   const reserveActive = active('Auto Reserve Seat');
   const reserveBtn = document.getElementById('reserveBtn');
-  const cancelBtn = document.getElementById('reserveCancelBtn');
+  const reserveCancelBtn = document.getElementById('reserveCancelBtn');
   activeReserveRunIds = reserveActive.map((r) => r.id);
   reserveBtn.disabled = reserveActive.length > 0;
   reserveBtn.textContent = reserveActive.length > 0 ? '⏳ 감시 실행 중...' : '🎯 지금 예약 감시 시작';
-  cancelBtn.hidden = reserveActive.length === 0;
-  cancelBtn.disabled = false;
+  reserveCancelBtn.hidden = reserveActive.length === 0;
+  reserveCancelBtn.disabled = false;
 
   const extendActive = active('Auto Extend Seat');
   const extendBtn = document.getElementById('extendBtn');
   extendBtn.disabled = extendActive.length > 0;
   extendBtn.textContent = extendActive.length > 0 ? '⏳ 연장 확인 중...' : '🔄 지금 연장 실행';
+
+  const cancelSeatActive = active('Cancel Seat');
+  const cancelSeatBtn = document.getElementById('cancelBtn');
+  cancelSeatBtn.disabled = cancelSeatActive.length > 0;
+  cancelSeatBtn.textContent = cancelSeatActive.length > 0 ? '⏳ 취소 처리 중...' : '🗑 현재 좌석 취소';
 }
 
 function formatTime(s) {
