@@ -178,8 +178,18 @@
   </div>
 
   <div class="card">
-    <button class="secondary" id="extendBtn" onclick="runExtend()">🔄 지금 연장 실행</button>
-    <p class="hint">평소엔 10분마다 자동으로 돌지만, 지금 바로 확인하고 싶을 때 누르세요.</p>
+    <div class="seat-title">⏱ 자동연장 <span class="badge queued" id="autoExtendState">확인 중</span></div>
+    <div class="row">
+      <button class="primary" id="extendOnBtn" onclick="turnOnExtend()">🟢 켜기</button>
+      <button class="danger" id="extendOffBtn" onclick="turnOffExtend()">🔴 끄기</button>
+    </div>
+    <p class="hint">켜면 배정된 좌석이 있는지 먼저 확인한 뒤 10분마다 자동연장을 시작합니다.
+      다 썼으면 꺼주세요 (GitHub Actions 무료 사용량 절약 - 켜둔 시간만큼만 소모됩니다).</p>
+  </div>
+
+  <div class="card">
+    <button class="secondary" id="refreshBtn" onclick="runRefresh()">🔄 새로고침 (지금 1회 확인)</button>
+    <p class="hint">켜짐/꺼짐 상태와 무관하게 지금 바로 1회만 연장 가능 여부를 확인/시도합니다.</p>
   </div>
 
   <div class="card">
@@ -258,6 +268,7 @@ async function dispatch(workflowFile, inputs, label, btn) {
     toast(`${label} 실행 요청 완료`);
     setTimeout(loadRuns, 2000);
     setTimeout(loadStatus, 2000);
+    setTimeout(loadExtendState, 4000);
   } catch (e) {
     toast(`실패: ${e.message}`);
     if (btn) { btn.disabled = false; }
@@ -272,8 +283,33 @@ function runReserve() {
   dispatch('auto-reserve.yml', { room_id: roomId, retry_minutes: minutes }, '자동예약', document.getElementById('reserveBtn'));
 }
 
-function runExtend() {
-  dispatch('auto-extend.yml', {}, '자동연장', document.getElementById('extendBtn'));
+function turnOnExtend() {
+  dispatch('enable-auto-extend.yml', {}, '자동연장 켜기', document.getElementById('extendOnBtn'));
+}
+
+function turnOffExtend() {
+  dispatch('disable-auto-extend.yml', {}, '자동연장 끄기', document.getElementById('extendOffBtn'));
+}
+
+function runRefresh() {
+  dispatch('refresh.yml', {}, '새로고침', document.getElementById('refreshBtn'));
+}
+
+async function loadExtendState() {
+  const el = document.getElementById('autoExtendState');
+  const onBtn = document.getElementById('extendOnBtn');
+  const offBtn = document.getElementById('extendOffBtn');
+  try {
+    const data = await gh('/actions/workflows/auto-extend.yml');
+    const isOn = data.state === 'active';
+    el.textContent = isOn ? 'ON' : 'OFF';
+    el.className = isOn ? 'badge ok' : 'badge fail';
+    onBtn.disabled = isOn;
+    offBtn.disabled = !isOn;
+  } catch (e) {
+    el.textContent = '확인 실패';
+    el.className = 'badge fail';
+  }
 }
 
 function runCancel() {
@@ -319,10 +355,18 @@ function syncButtons(runs) {
   reserveCancelBtn.hidden = reserveActive.length === 0;
   reserveCancelBtn.disabled = false;
 
-  const extendActive = active('Auto Extend Seat');
-  const extendBtn = document.getElementById('extendBtn');
-  extendBtn.disabled = extendActive.length > 0;
-  extendBtn.textContent = extendActive.length > 0 ? '⏳ 연장 확인 중...' : '🔄 지금 연장 실행';
+  const onActive = active('자동연장 켜기');
+  const offActive = active('자동연장 끄기');
+  const refreshActive = active('새로고침 (1회 연장 확인)');
+  const extendOnBtn = document.getElementById('extendOnBtn');
+  const extendOffBtn = document.getElementById('extendOffBtn');
+  extendOnBtn.textContent = onActive.length > 0 ? '⏳ 켜는 중...' : '🟢 켜기';
+  extendOffBtn.textContent = offActive.length > 0 ? '⏳ 끄는 중...' : '🔴 끄기';
+  if (onActive.length > 0) extendOnBtn.disabled = true;
+  if (offActive.length > 0) extendOffBtn.disabled = true;
+  const refreshBtn = document.getElementById('refreshBtn');
+  refreshBtn.disabled = refreshActive.length > 0;
+  refreshBtn.textContent = refreshActive.length > 0 ? '⏳ 확인 중...' : '🔄 새로고침 (지금 1회 확인)';
 
   const cancelSeatActive = active('Cancel Seat');
   const cancelSeatBtn = document.getElementById('cancelBtn');
@@ -421,8 +465,10 @@ function boot() {
   document.getElementById('app').hidden = false;
   loadRuns();
   loadStatus();
+  loadExtendState();
   setInterval(loadRuns, 15000);
   setInterval(loadStatus, 15000);
+  setInterval(loadExtendState, 15000);
 }
 
 boot();
